@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include "iconfigreader.h"
+#include "handlers/ihandler.h"
 
 class BigXMLHandler : public QObject
 {
@@ -20,8 +21,7 @@ protected:
     std::shared_ptr<IConfig> m_config;
     bool validateFilePath(const QString &path);
     constexpr size_t maxBufferSize() const;
-    long double result {0};
-    std::vector<long double> m_tmpBuffer;
+    std::shared_ptr<IXMLHandler> m_handler {};
 };
 
 #endif // BIGXMLHANDLER_H

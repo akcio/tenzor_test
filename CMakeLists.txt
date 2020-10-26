@@ -16,6 +16,8 @@ find_package(Qt5Core)
 add_executable(tenzor_test
   fileconfigreader.cpp
   bigxmlhandler.cpp
+  handlers/linearhandler.cpp
+  handlers/threadhandler.cpp
   main.cpp
 )
 target_link_libraries(tenzor_test Qt5::Core)

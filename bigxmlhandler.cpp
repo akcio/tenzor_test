@@ -1,12 +1,15 @@
 #include "bigxmlhandler.h"
 #include <QFile>
+#include <QFileInfo>
 #include <QXmlStreamReader>
+#include "handlers/linearhandler.h"
+#include "handlers/threadhandler.h"
 
 BigXMLHandler::BigXMLHandler(std::shared_ptr<IConfig> config, QObject *parent) :
     QObject(parent),
     m_config(config)
 {
-    m_tmpBuffer.reserve(maxBufferSize());
+
 }
 
 void BigXMLHandler::start()
@@ -21,34 +24,19 @@ void BigXMLHandler::start()
     if (not xmlFile.open(QIODevice::ReadOnly)) {
         return;
     }
-    QString currentPath {""};
-    QString attributePath = m_config->getAttributePath();
-    auto splitted = attributePath.split(".");
-    QString attributePrefix {""};
-    for (auto &item : splitted.mid(0, splitted.size() - 1)) {
-        if (not attributePrefix.isEmpty()) {
-            attributePrefix += ".";
-        }
-        attributePrefix += item;
+
+    if (xmlFile.size() > 1024*1024 ) {
+        m_handler = std::make_shared<ThreadHandler>(m_config->getAttributePath());
+    } else {
+        m_handler = std::make_shared<LinearHandler>(m_config->getAttributePath());
     }
-    QString lastParamName = splitted.last();
-//    QString paramName {""};
-//    for (auto &item : m_config->getAttributePath().split(".").mid(m_config->getNodePath().split(".").size())) {
-//        if (not paramName.isEmpty()) {
-//            paramName += ".";
-//        }
-//        paramName += item;
-//    }
+    QString currentPath {""};
+
+
     QXmlStreamReader xml(&xmlFile);
     while (not xml.atEnd()) {
-        if (m_tmpBuffer.size() >= maxBufferSize()) {
-            result = std::accumulate(m_tmpBuffer.begin(), m_tmpBuffer.end(), result);
-            m_tmpBuffer.clear();
-            if (m_tmpBuffer.capacity() != maxBufferSize()) {
-                m_tmpBuffer.reserve(maxBufferSize());
-            }
-        }
-        switch (xml.readNext()) {
+        auto token = xml.readNext();
+        switch (token) {
         case QXmlStreamReader::StartElement: {
             if ( not currentPath.isEmpty() ) {
                 currentPath += ".";
@@ -66,40 +54,16 @@ void BigXMLHandler::start()
                 }
                 currentPath += item;
             }
-            continue;
-            break;
-        }
-        case QXmlStreamReader::Characters: {
-            if (currentPath == attributePath) {
-                bool ok {true};
-                auto value = xml.text().toDouble(&ok);
-                if (ok) {
-                    m_tmpBuffer.push_back(value);
-                }
-
-            }
-            continue;
             break;
         }
         default:
-            continue;
+            break;
         }
-        if (currentPath == attributePrefix) {
-            auto valueString = xml.attributes().value(lastParamName);
-            if (not valueString.isEmpty()) {
-                bool isOk {false};
-                auto value = valueString.toDouble(&isOk);
-                if (isOk) {
-                    m_tmpBuffer.push_back(value);
-                }
-            }
-        }
+        m_handler->handleXMLItem(token, currentPath, &xml);
     }
     if (xml.hasError()) {
         return;
     }
-    result = std::accumulate(m_tmpBuffer.begin(), m_tmpBuffer.begin()+m_tmpBuffer.size(), result);
-    m_tmpBuffer.clear();
 }
 
 bool BigXMLHandler::validateFilePath(const QString &path)
@@ -107,13 +71,10 @@ bool BigXMLHandler::validateFilePath(const QString &path)
     return QFile::exists( path );
 }
 
-constexpr size_t BigXMLHandler::maxBufferSize() const
-{
-    // 32kB is L1 cache size
-    return 32 * 1024 / sizeof(result);
-}
-
 long double BigXMLHandler::getResult() const
 {
-    return result;
+    if (m_handler != nullptr) {
+        return m_handler->getResult();
+    }
+    return 0;
 }
